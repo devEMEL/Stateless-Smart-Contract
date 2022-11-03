@@ -1,23 +1,51 @@
-/**
- * In this script we will fund an escrow contract. The escrow contract
- * ensures the payment is made out(from the escrow) to a specific receiver only.
- * This receiver address is hardcoded in the smart contract, and can be passed
- * dynamically to the contract using fundLsig function (passed as a template parameter)
- */
+const { executeTransaction } = require("@algo-builder/algob");
+const { types } = require("@algo-builder/web");
+
 async function run (runtimeEnv, deployer) {
-  console.log('Escrow account script execution started!');
+  // accounts involved
+  const master = deployer.accountsByName.get("master");
+  const acc1 = deployer.accountsByName.get("acc1");
+  const acc2 = deployer.accountsByName.get("acc2");
 
-  // RECEIVER_ADDRESS is set in escrow.py when it is compiled from PyTEAL to TEAL
+  // supply params to program during compilation - not the same as passing arguments
   const templateParams = {
-    RECEIVER_ADDRESS: 'WHVQXVVCQAD7WX3HHFKNVUL3MOANX3BYXXMEEJEJWOZNRXJNTN7LTNPSTY'
-  };
-  await deployer.fundLsig('escrow.py',
-    { funder: deployer.accounts[0], fundingMicroAlgo: 20e6 }, { fee: 1000 }, templateParams);
-  const escrow = await deployer.loadLogic('escrow.py', templateParams);
+    RECEVIER_1: acc1.addr,
+    RECEIVER_2: acc2.addr
+  }
+  
+  // create logic sig for sender account
+  const masterLogicSig = await deployer.mkDelegatedLsig(
+    "pyteal_program.py",
+    master,
+    templateParams
+  );
 
-  await deployer.addCheckpointKV('User Checkpoint Escrow', `Fund Escrow Account: ${escrow.address()}`);
-  console.log('Escrow account script execution finished!');
+  // send Algos to acc1
+  console.log("send algos to acc1...")
+  await executeTransaction(deployer, {
+      type: types.TransactionType.TransferAlgo,
+      sign: types.SignType.LogicSignature,
+      lsig: masterLogicSig.lsig,
+      fromAccountAddr: masterLogicSig.contractAddress,
+      toAccountAddr: acc1.addr,
+      amountMicroAlgos: 1e6, //1 algo
+      payFlags: { totalFee: 1000 },
+      args: ["rcv1password"],
+  });
+
+  // send Algos to acc2
+  console.log("send algos to acc2...")
+  await executeTransaction(deployer, {
+      type: types.TransactionType.TransferAlgo,
+      sign: types.SignType.LogicSignature,
+      lsig: masterLogicSig.lsig,
+      fromAccountAddr: masterLogicSig.contractAddress,
+      toAccountAddr: acc2.addr,
+      amountMicroAlgos: 1e6, //1 algo
+      payFlags: { totalFee: 1000 },
+      args: ["rcv2password"]
+  });
+
 }
 
 module.exports = { default: run };
-
